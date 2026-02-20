@@ -6,6 +6,16 @@
 
 This is a standardized evaluation tool that computes common machine learning metrics like Accuracy, MSE, and returns their confidence intervals using bootstraping and other methods. 
 
+# Why do we need Confidence Interval for reliable AI Model evaluation?
+
+In practice, teams often ship (or reject) models based on single-number metrics computed on small or shifting test sets. When the metric is noisy, tiny changes in data, random seeds, or sampling can look like “regressions” or “breakthroughs” that are not real—creating wasted iteration, broken trust with stakeholders, and brittle release decisions.
+
+A real example: years ago, before founding HumbleBee.AI, a colleague of Jumabek Alikhan was building a YOLO detector for a German client. Early evaluation on a small test set reported mAP ≈ 40%. After collecting more data and expanding train/test, the reported mAP dropped to ≈ 36%, and the client assumed the model had degraded. Jumabek was brought in to investigate. The issue was not a YOLO “bug,” but statistical uncertainty: the original 40% came from a small test set with an extremely wide 95% confidence interval (roughly 20%–60%), while the 36% on the larger test set had a tighter, more reliable interval (roughly 30%–42%). Communicating that uncertainty resolved the dispute and aligned the team on the true model trajectory.
+
+That mindset—treating evaluation as statistical inference, not a single-point score—shaped how Jumabek later built HumbleBee.AI: delivering production ML with defensible measurement, not dashboard optimism. infer-ci is the open-source extraction of that one principle, packaged so any team can attach confidence intervals to the metrics they already report and make release decisions on stable evidence.
+
+
+
 ## The motivation
 
  Computing Confidence Intervals when providing performance estimates has not been sufficiently studied. Over the years, researchers have proposed multiple CI estimation methods in different fields, including medical statistics, AutoML, and text classification. Each method has specific assumptions, strengths, and limitations. However, most approaches are designed for a single metric or a narrow class of models, which limits their applicability. 
