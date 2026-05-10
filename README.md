@@ -1,5 +1,4 @@
-# infer-ci
-
+# Confidence Intervals for evaluation metrics
 ![logo](docs/images/infer.png)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
