@@ -32,7 +32,6 @@ project/
 |       ├── __init__.py             # Initialize the module to be used as a package
 |       ├── __version__.py          # Version of the module (should be updated and used with each release)
 |       └── ...                     # Other main python files of this module
-├── templates/              # Template files (if any, e.g. config files, etc...) used in this project
 ├── tests/                  # Tests for this project
 |   ├── __init__.py             # Initialize the test module
 |   ├── conftest.py             # Presets for pytest (e.g. fixtures, plugins, pre/post test hooks, etc...)
@@ -56,6 +55,5 @@ project/
 ├── pytest.ini              # Pytest configuration file
 ├── README.md               # Main README file for this project
 ├── requirements.txt        # Main python dependency requirements for this project
-├── setup.cfg               # Configuration for setuptools
 └── setup.py                # Setup script for setuptools (for backward compatibility)
 ```

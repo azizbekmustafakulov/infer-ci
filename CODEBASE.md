@@ -33,9 +33,8 @@ infer-ci/
 ├── tests/                          # Pytest test suite (9 files)
 ├── examples/
 │   ├── simple/main.py              # Binary classification example
-│   └── advanced/                   # Advanced example placeholders
+│   └── notebooks/                  # Jupyter notebooks
 ├── datasets/                       # CSV datasets for tests and examples
-├── notebooks/                      # Jupyter notebooks
 ├── docs/                           # MkDocs documentation source
 ├── scripts/                        # Build, test, release, version scripts
 ├── requirements/                   # Dependency files by environment

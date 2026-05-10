@@ -115,7 +115,7 @@ recall, ci = evaluate.evaluate(
 
 ## Complete Example
 
-📓 **For a complete interactive example with COCO128 dataset, see:** [`notebooks/example_detection.ipynb`](../notebooks/example_detection.ipynb)
+📓 **For a complete interactive example with COCO128 dataset, see:** [`examples/notebooks/example_detection.ipynb`](../examples/notebooks/example_detection.ipynb)
 
 The notebook includes:
 - Step-by-step setup with COCO128 dataset
