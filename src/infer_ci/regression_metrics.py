@@ -1,10 +1,16 @@
 """Confidence intervals for regression metrics"""
 
+import logging
 from typing import List, Callable, Tuple, Union, Optional
 import numpy as np
 from functools import partial
 from .methods import bootstrap_ci, bootstrap_methods, jackknife_ci, regression_conf_methods
-from .visualize import bootstrap_with_plot
+from .visualize import bootstrap_with_plot, create_bootstrap_histogram_plot
+
+logger = logging.getLogger(__name__)
+
+# Small epsilon to avoid division by zero in regression metrics
+_EPSILON: float = 1e-15
 
 
 # Defining the confidence interval computation function
@@ -97,21 +103,16 @@ def _compute_metric_with_optional_ci(y_true: List[float],
     if compute_ci:
         # Check if plotting is requested and method is bootstrap
         if plot and method.startswith('bootstrap'):
-            # Use the new bootstrap_with_plot helper
-            from .visualize import create_bootstrap_histogram_plot
-
-            # Get bootstrap samples for plotting
             result_with_samples = _compute_confidence_interval(
                 y_true, y_pred, metric_func, confidence_level, method,
                 return_samples=True, **kwargs
             )
             metric_value, ci, bootstrap_samples = result_with_samples
 
-            # Create and save the histogram plot using the new visualization system
             plot_path = create_bootstrap_histogram_plot(
                 bootstrap_samples, metric_value, ci, metric_name, method, confidence_level, "regression"
             )
-            print(f"Histogram plot saved to: {plot_path}")
+            logger.info(f"Histogram plot saved to: {plot_path}")
 
             # Return metric_value, ci, and filepath when plot=True
             return metric_value, ci, plot_path
@@ -293,7 +294,7 @@ def r2_score(y_true: List[float],
         y_pred_arr = np.array(y_pred)
         ss_res = np.sum(np.square(y_true_arr - y_pred_arr))
         ss_tot = np.sum(np.square(y_true_arr - np.mean(y_true_arr)))
-        return 1 - (ss_res / (ss_tot + 1e-15))
+        return 1 - (ss_res / (ss_tot + _EPSILON))
 
     return _compute_metric_with_optional_ci(
         y_true=y_true,
@@ -341,7 +342,7 @@ def mape(y_true: List[float],
     def mape_metric(y_true, y_pred):
         y_true_arr = np.array(y_true)
         y_pred_arr = np.array(y_pred)
-        return np.mean(np.abs((y_true_arr - y_pred_arr) / (y_true_arr + 1e-15))) * 100
+        return np.mean(np.abs((y_true_arr - y_pred_arr) / (y_true_arr + _EPSILON))) * 100
 
     return _compute_metric_with_optional_ci(
         y_true=y_true,
@@ -390,9 +391,9 @@ def adjusted_r2_score(num_features: int,
         y_pred_arr = np.array(y_pred)
         ss_nominator = np.sum(np.square(y_true_arr - y_pred_arr))
         ss_denominator = np.sum(np.square(y_true_arr - np.mean(y_true_arr)))
-        r2_val = 1 - (ss_nominator/(ss_denominator + 1e-15))
+        r2_val = 1 - (ss_nominator/(ss_denominator + _EPSILON))
         n = len(y_true)
-        return 1 - (1 - r2_val) * (n - 1) / (n - num_features - 1 + 1e-15)
+        return 1 - (1 - r2_val) * (n - 1) / (n - num_features - 1 + _EPSILON)
 
     return _compute_metric_with_optional_ci(
         y_true=y_true,
@@ -436,7 +437,7 @@ def sym_mean_abs_per_error(
     def smape_metric(y_true, y_pred):
         y_true_arr = np.array(y_true)
         y_pred_arr = np.array(y_pred)
-        return np.mean(2 * np.abs(y_pred_arr - y_true_arr) / (np.abs(y_true_arr) + np.abs(y_pred_arr) + 1e-15)) * 100
+        return np.mean(2 * np.abs(y_pred_arr - y_true_arr) / (np.abs(y_true_arr) + np.abs(y_pred_arr) + _EPSILON)) * 100
 
     return _compute_metric_with_optional_ci(
         y_true=y_true,
@@ -607,7 +608,7 @@ def exp_var_score(y_true: List[float],
         y_true_arr = np.array(y_true)
         y_pred_arr = np.array(y_pred)
         numerator = np.var(y_true_arr - y_pred_arr)
-        denominator = np.var(y_true_arr) + 1e-15
+        denominator = np.var(y_true_arr) + _EPSILON
         return 1 - (numerator / denominator)
 
     return _compute_metric_with_optional_ci(

@@ -6,11 +6,21 @@ from pathlib import Path
 import yaml
 import warnings
 import logging
+from PIL import Image
+from tqdm import tqdm
 
-from .visualize import bootstrap_with_plot
+from .visualize import bootstrap_with_plot, create_bootstrap_histogram_plot
 
 # Setup logger
 logger = logging.getLogger(__name__)
+
+# COCO evaluation constants
+_EPSILON: float = 1e-10           # Division guard for IoU computation
+_COCO_IOU_START: float = 0.5     # mAP@0.5:0.95 lower bound
+_COCO_IOU_END: float = 0.95      # mAP@0.5:0.95 upper bound
+_COCO_IOU_STEPS: int = 10        # Number of IoU thresholds for mAP@0.5:0.95
+_COCO_INTERP_POINTS: int = 101   # Precision–recall interpolation points (COCO standard)
+_SMOOTH_FACTOR: float = 0.1      # F1-curve smoothing factor
 
 # Helper Functions (Internal)
 
@@ -125,16 +135,15 @@ def _load_ground_truth(y_true: Union[str, Path]) -> Tuple[List[np.ndarray], List
                 )
 
         # Get image shape from corresponding image
-        from PIL import Image
         img = Image.open(image_file)
         image_shapes.append(img.size[::-1])  # (height, width)
 
     # Warn if labels were skipped
     if len(skipped_labels) > 0:
-        print(f"\n  Skipped {len(skipped_labels)} labels without matching images:")
-        for fname in skipped_labels:
-            print(f"     - image {fname} not found")
-        print()
+        logger.warning(
+            "Skipped %d labels without matching images: %s",
+            len(skipped_labels), skipped_labels,
+        )
         
 
     # Validate we have ground truth
@@ -264,7 +273,7 @@ def _box_iou(box1: np.ndarray, box2: np.ndarray) -> np.ndarray:
     union_area = area1[:, None] + area2[None, :] - inter_area
 
     # Calculate IoU (avoid division by zero)
-    iou = inter_area / np.maximum(union_area, 1e-10)
+    iou = inter_area / np.maximum(union_area, _EPSILON)
 
     return iou
 
@@ -310,7 +319,7 @@ def _convert_yolo_to_xyxy(boxes: np.ndarray, img_shape: Tuple[int, int]) -> np.n
 
 def _process_batch(pred_boxes: np.ndarray,
                    gt_boxes: np.ndarray,
-                   iou_thresholds: np.ndarray = np.linspace(0.5, 0.95, 10)) -> Dict[str, np.ndarray]:
+                   iou_thresholds: np.ndarray = np.linspace(_COCO_IOU_START, _COCO_IOU_END, _COCO_IOU_STEPS)) -> Dict[str, np.ndarray]:
     """
     Process one image: match predictions to ground truth and compute TP/FP.
 
@@ -443,7 +452,7 @@ def _compute_ap(recall, precision):
     # Integrate area under curve
     method = "interp"  # methods: 'continuous', 'interp'
     if method == "interp":
-        x = np.linspace(0, 1, 101)  # 101-point interp (COCO)
+        x = np.linspace(0, 1, _COCO_INTERP_POINTS)  # COCO standard interpolation
         ap = np.trapz(np.interp(x, mrec, mpre), x)  # integrate
     else:  # 'continuous'
         i = np.where(mrec[1:] != mrec[:-1])[0]  # points where x-axis (recall) changes
@@ -453,7 +462,7 @@ def _compute_ap(recall, precision):
 
 
 def _calculate_ap(tp: np.ndarray, conf: np.ndarray, pred_cls: np.ndarray,
-                  gt_cls: np.ndarray, eps: float = 1e-16) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+                  gt_cls: np.ndarray, eps: float = _EPSILON) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Calculate Average Precision per class (matches ultralytics implementation).
 
@@ -547,7 +556,7 @@ def _calculate_ap(tp: np.ndarray, conf: np.ndarray, pred_cls: np.ndarray,
     f1_curve = 2 * p_curve * r_curve / (p_curve + r_curve + eps)
 
     # Find the GLOBAL max F1 index (same for all classes)
-    i = _smooth(f1_curve.mean(0), 0.1).argmax()  # max F1 index
+    i = _smooth(f1_curve.mean(0), _SMOOTH_FACTOR).argmax()  # max F1 index
     # max-F1 precision, recall
     precision = p_curve[:, i]  # Shape: (nc,)
     recall = r_curve[:, i]     # Shape: (nc,)
@@ -810,8 +819,7 @@ def _compute_per_class_ci(predictions: List[np.ndarray],
     # Run bootstrap iterations
     rng = np.random.default_rng(random_state)
 
-    print(f"Bootstrap resampling: {n_resamples} iterations...")
-    from tqdm import tqdm
+    logger.info("Bootstrap resampling: %d iterations...", n_resamples)
     for _ in tqdm(range(n_resamples), desc="Bootstrap CI"):
         # Resample image indices
         resampled_indices = rng.choice(n_images, size=n_images, replace=True)
@@ -862,7 +870,8 @@ def _compute_per_class_ci(predictions: List[np.ndarray],
     per_class_results = {}
     table_data = []
 
-    print(f"Saving plots ...") if plot else None
+    if plot:
+        logger.info("Saving plots...")
 
     for class_id in unique_classes:
         class_name = class_names.get(class_id, f"class_{class_id}")
@@ -886,7 +895,6 @@ def _compute_per_class_ci(predictions: List[np.ndarray],
 
         # Plot if requested (generate all plots)        
         if plot:
-            from .visualize import create_bootstrap_histogram_plot
             plot_name = f"{metric_name} - class_{class_id}_{class_name}"
             create_bootstrap_histogram_plot(
                 samples, class_value, class_ci,
@@ -894,26 +902,21 @@ def _compute_per_class_ci(predictions: List[np.ndarray],
                 plot_type="detection"
             )
 
-    # Print results as formatted table
-    print(f"\nPer-class {metric_name} with {int(confidence_level*100)}% Confidence Intervals:")
-
     total_support = sum(support_counts.values())
+    metric_ci_label = f"{metric_name} CI"
 
-    # Header
-    print(f"{'':>4} {'Class':<30} {metric_name+' CI':<25} {'Support':>8}")
-
-    # Overall row
-    print(f"{'':>4} {'all':<30} ({overall_ci[0]:.3f}, {overall_ci[1]:.3f}){'':<13} {total_support:>6}")
-
-    # Per-class rows
+    # Log per-class results as a formatted table
+    header = f"\nPer-class {metric_name} with {int(confidence_level * 100)}% Confidence Intervals:\n"
+    header += f"{'':>4} {'Class':<30} {metric_ci_label:<25} {'Support':>8}\n"
+    header += f"{'':>4} {'all':<30} ({overall_ci[0]:.3f}, {overall_ci[1]:.3f}){'':13} {total_support:>6}"
+    rows = []
     for row in table_data:
-        class_label = f"{row['class_id']}  {row['class_name']}"
         ci_str = f"({row['ci'][0]:.3f}, {row['ci'][1]:.3f})"
-        print(f"{row['class_id']:>4} {row['class_name']:<30} {ci_str:<25} {row['support']:>8}")
+        rows.append(f"{row['class_id']:>4} {row['class_name']:<30} {ci_str:<25} {row['support']:>8}")
+    logger.info("%s\n%s", header, "\n".join(rows))
 
     if plot:
-        print(f"\n✓ Saved per-class plots to results/")
-    print()
+        logger.info("Saved per-class plots to results/")
 
     return overall_value, overall_ci
 
@@ -979,10 +982,10 @@ def _prepare_detection_data(y_true: Union[str, Path],
             skipped_files.append(pred_fname)
 
     if len(skipped_files) > 0:
-        print(f"  Skipped {len(skipped_files)} predictions without matching ground truth labels:")
-        for fname in skipped_files:
-            print(f"     - label {fname}.txt file not found")
-        print()
+        logger.warning(
+            "Skipped %d predictions without matching ground truth labels: %s",
+            len(skipped_files), skipped_files,
+        )
 
     if len(matched_predictions) == 0:
         raise ValueError(

@@ -1,5 +1,4 @@
 """
-
 This code is based on the fast delong method,
 taken from this stack overflow thread:
 https://stackoverflow.com/questions/19124239/scikit-learn-roc-curve-with-confidence-intervals
@@ -11,12 +10,13 @@ https://github.com/yandexdataschool/roc_comparison
 import numpy as np
 import scipy.stats
 from scipy import stats
+from typing import Optional, Tuple
 
 # AUC comparison adapted from
 # https://github.com/Netflix/vmaf/
 
 
-def compute_midrank(x):
+def _compute_midrank(x: np.ndarray) -> np.ndarray:
     """Computes midranks.
     Args:
        x - a 1D numpy array
@@ -41,12 +41,13 @@ def compute_midrank(x):
     return T2
 
 
-def compute_midrank_weight(x, sample_weight):
-    """Computes midranks.
+def _compute_midrank_weight(x: np.ndarray, sample_weight: np.ndarray) -> np.ndarray:
+    """Computes weighted midranks.
     Args:
        x - a 1D numpy array
+       sample_weight - a 1D numpy array of sample weights
     Returns:
-       array of midranks
+       array of weighted midranks
     """
     J = np.argsort(x)
     Z = x[J]
@@ -65,17 +66,20 @@ def compute_midrank_weight(x, sample_weight):
     return T2
 
 
-def fastDeLong(predictions_sorted_transposed, label_1_count, sample_weight):
+def _fast_de_long(
+        predictions_sorted_transposed: np.ndarray,
+        label_1_count: int,
+        sample_weight: Optional[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
     if sample_weight is None:
-        return fastDeLong_no_weights(
-            predictions_sorted_transposed, label_1_count)
+        return _fast_de_long_no_weights(predictions_sorted_transposed, label_1_count)
     else:
-        return fastDeLong_weights(
-            predictions_sorted_transposed, label_1_count, sample_weight)
+        return _fast_de_long_weights(predictions_sorted_transposed, label_1_count, sample_weight)
 
 
-def fastDeLong_weights(predictions_sorted_transposed,
-                       label_1_count, sample_weight):
+def _fast_de_long_weights(
+        predictions_sorted_transposed: np.ndarray,
+        label_1_count: int,
+        sample_weight: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
     The fast version of DeLong's method for computing the covariance of
     unadjusted AUC.
@@ -108,19 +112,14 @@ def fastDeLong_weights(predictions_sorted_transposed,
     ty = np.empty([k, n], dtype=np.float32)
     tz = np.empty([k, m + n], dtype=np.float32)
     for r in range(k):
-        tx[r, :] = compute_midrank_weight(
-            positive_examples[r, :], sample_weight[:m])
-        ty[r, :] = compute_midrank_weight(
-            negative_examples[r, :], sample_weight[m:])
-        tz[r, :] = compute_midrank_weight(
-            predictions_sorted_transposed[r, :], sample_weight)
+        tx[r, :] = _compute_midrank_weight(positive_examples[r, :], sample_weight[:m])
+        ty[r, :] = _compute_midrank_weight(negative_examples[r, :], sample_weight[m:])
+        tz[r, :] = _compute_midrank_weight(predictions_sorted_transposed[r, :], sample_weight)
     total_positive_weights = sample_weight[:m].sum()
     total_negative_weights = sample_weight[m:].sum()
-    pair_weights = np.dot(
-        sample_weight[:m, np.newaxis], sample_weight[np.newaxis, m:])
+    pair_weights = np.dot(sample_weight[:m, np.newaxis], sample_weight[np.newaxis, m:])
     total_pair_weights = pair_weights.sum()
-    aucs = (sample_weight[:m] * (tz[:, :m] - tx)
-            ).sum(axis=1) / total_pair_weights
+    aucs = (sample_weight[:m] * (tz[:, :m] - tx)).sum(axis=1) / total_pair_weights
     v01 = (tz[:, :m] - tx[:, :]) / total_negative_weights
     v10 = 1. - (tz[:, m:] - ty[:, :]) / total_positive_weights
     sx = np.cov(v01)
@@ -129,7 +128,9 @@ def fastDeLong_weights(predictions_sorted_transposed,
     return aucs, delongcov
 
 
-def fastDeLong_no_weights(predictions_sorted_transposed, label_1_count):
+def _fast_de_long_no_weights(
+        predictions_sorted_transposed: np.ndarray,
+        label_1_count: int) -> Tuple[np.ndarray, np.ndarray]:
     """
     The fast version of DeLong's method for computing the covariance of
     unadjusted AUC.
@@ -163,9 +164,9 @@ def fastDeLong_no_weights(predictions_sorted_transposed, label_1_count):
     ty = np.empty([k, n], dtype=np.float32)
     tz = np.empty([k, m + n], dtype=np.float32)
     for r in range(k):
-        tx[r, :] = compute_midrank(positive_examples[r, :])
-        ty[r, :] = compute_midrank(negative_examples[r, :])
-        tz[r, :] = compute_midrank(predictions_sorted_transposed[r, :])
+        tx[r, :] = _compute_midrank(positive_examples[r, :])
+        ty[r, :] = _compute_midrank(negative_examples[r, :])
+        tz[r, :] = _compute_midrank(predictions_sorted_transposed[r, :])
     aucs = tz[:, :m].sum(axis=1) / m / n - float(m + 1.0) / 2.0 / n
     v01 = (tz[:, :m] - tx[:, :]) / n
     v10 = 1.0 - (tz[:, m:] - ty[:, :]) / m
@@ -175,7 +176,7 @@ def fastDeLong_no_weights(predictions_sorted_transposed, label_1_count):
     return aucs, delongcov
 
 
-def calc_pvalue(aucs, sigma):
+def _calc_pvalue(aucs: np.ndarray, sigma: np.ndarray) -> np.ndarray:
     """Computes log(10) of p-values.
     Args:
        aucs: 1D array of AUCs
@@ -188,7 +189,9 @@ def calc_pvalue(aucs, sigma):
     return np.log10(2) + scipy.stats.norm.logsf(z, loc=0, scale=1) / np.log(10)
 
 
-def compute_ground_truth_statistics(ground_truth, sample_weight):
+def compute_ground_truth_statistics(
+        ground_truth: np.ndarray,
+        sample_weight: Optional[np.ndarray]) -> Tuple[np.ndarray, int, Optional[np.ndarray]]:
     if not np.array_equal(np.unique(ground_truth), [0, 1]):
         raise ValueError('ground_truth must be a binary array containing only 0 and 1')
     order = (~ground_truth).argsort()
@@ -201,7 +204,10 @@ def compute_ground_truth_statistics(ground_truth, sample_weight):
     return order, label_1_count, ordered_sample_weight
 
 
-def delong_roc_variance(ground_truth, predictions, sample_weight=None):
+def delong_roc_variance(
+        ground_truth: np.ndarray,
+        predictions: np.ndarray,
+        sample_weight: Optional[np.ndarray] = None) -> Tuple[float, np.ndarray]:
     """
     Computes ROC AUC variance for a single set of predictions
     Args:
@@ -211,7 +217,7 @@ def delong_roc_variance(ground_truth, predictions, sample_weight=None):
     order, label_1_count, ordered_sample_weight = compute_ground_truth_statistics(
         ground_truth, sample_weight)
     predictions_sorted_transposed = predictions[np.newaxis, order]
-    aucs, delongcov = fastDeLong(
+    aucs, delongcov = _fast_de_long(
         predictions_sorted_transposed, label_1_count, ordered_sample_weight)
     if len(aucs) != 1:
         raise RuntimeError("There is a bug in the code, please forward this to the developers")

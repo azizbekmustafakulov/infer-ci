@@ -215,6 +215,108 @@ class MetricEvaluator:
         else:
             raise ValueError(f"Unknown task type: {task}. Use 'classification', 'regression', or 'detection'")
     
+    # ------------------------------------------------------------------
+    # Private task dispatchers
+    # ------------------------------------------------------------------
+
+    def _evaluate_detection(
+            self,
+            y_true,
+            y_pred,
+            metric: str,
+            method: str,
+            confidence_level: float,
+            compute_ci: bool,
+            plot: bool,
+            **kwargs):
+        if y_true is None or y_pred is None:
+            raise ValueError(
+                "Detection tasks require:\n"
+                "  - 'y_true': Path to validation dataset directory (e.g., 'val-dataset')\n"
+                "  - 'y_pred': List of ultralytics Results objects from model.predict()"
+            )
+        if metric not in self.detection_metrics:
+            available = ', '.join(self.detection_metrics.keys())
+            raise ValueError(f"Unknown detection metric: {metric}. Available: {available}")
+        try:
+            return self.detection_metrics[metric](
+                y_true=y_true,
+                y_pred=y_pred,
+                confidence_level=confidence_level,
+                method=method,
+                compute_ci=compute_ci,
+                plot=plot,
+                **kwargs,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Error computing {metric}: {str(e)}")
+
+    def _evaluate_classification(
+            self,
+            y_true,
+            y_pred,
+            metric: str,
+            method: str,
+            confidence_level: float,
+            compute_ci: bool,
+            plot: bool,
+            **kwargs):
+        if metric not in self.classification_metrics:
+            available = ', '.join(self.classification_metrics.keys())
+            raise ValueError(f"Unknown classification metric: {metric}. Available: {available}")
+        if method not in self.classification_methods:
+            available = ', '.join(self.classification_methods)
+            raise ValueError(f"Unknown classification method: {method}. Available: {available}")
+        if method.startswith('bootstrap') and 'n_resamples' not in kwargs:
+            kwargs['n_resamples'] = 9999
+        try:
+            return self.classification_metrics[metric](
+                y_true=y_true,
+                y_pred=y_pred,
+                confidence_level=confidence_level,
+                method=method,
+                compute_ci=compute_ci,
+                plot=plot,
+                **kwargs,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Error computing {metric} with method {method}: {str(e)}")
+
+    def _evaluate_regression(
+            self,
+            y_true,
+            y_pred,
+            metric: str,
+            method: str,
+            confidence_level: float,
+            compute_ci: bool,
+            plot: bool,
+            **kwargs):
+        if metric not in self.regression_metrics:
+            available = ', '.join(self.regression_metrics.keys())
+            raise ValueError(f"Unknown regression metric: {metric}. Available: {available}")
+        if method not in self.regression_methods:
+            available = ', '.join(self.regression_methods)
+            raise ValueError(f"Unknown regression method: {method}. Available: {available}")
+        if method.startswith('bootstrap') and 'n_resamples' not in kwargs:
+            kwargs['n_resamples'] = 9999
+        try:
+            return self.regression_metrics[metric](
+                y_true=y_true,
+                y_pred=y_pred,
+                confidence_level=confidence_level,
+                method=method,
+                compute_ci=compute_ci,
+                plot=plot,
+                **kwargs,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Error computing {metric} with method {method}: {str(e)}")
+
+    # ------------------------------------------------------------------
+    # Public evaluate method
+    # ------------------------------------------------------------------
+
     def evaluate(self,
                  y_true: Optional[List[Union[int, float]]] = None,
                  y_pred: Optional[List[Union[int, float]]] = None,
@@ -253,8 +355,7 @@ class MetricEvaluator:
         data : str, optional
             Dataset configuration path (required for detection tasks)
         **kwargs : dict
-            Additional arguments (e.g., n_resamples for bootstrap methods,
-            n_iterations for detection tasks)
+            Additional arguments (e.g., n_resamples for bootstrap methods)
 
         Returns:
         --------
@@ -264,118 +365,24 @@ class MetricEvaluator:
                 If compute_ci=True: (metric_value, (lower_bound, upper_bound))
             For detection:
                 Dictionary with class names as keys and (mean_metric, (lower_CI, upper_CI)) as values
-
-        Example:
-        --------
-        >>> evaluator = MetricEvaluator()
-        >>> # Regression example
-        >>> mae_val, ci = evaluator.evaluate(
-        ...     y_true=[1, 2, 3, 4, 5],
-        ...     y_pred=[1.1, 2.1, 2.9, 4.1, 4.9],
-        ...     task='regression',
-        ...     metric='mae',
-        ...     method='jackknife'
-        ... )
-        >>> print(f"MAE: {mae_val:.3f}, 95% CI: [{ci[0]:.3f}, {ci[1]:.3f}]")
-        >>>
-        >>> # Detection example
-        >>> from ultralytics import YOLO
-        >>> model = YOLO('yolov8n.pt')
-        >>> results = model.predict(source='dataset/images')
-        >>> map_val, (lower, upper) = evaluator.evaluate(
-        ...     y_true='dataset',
-        ...     y_pred=results,
-        ...     task='detection',
-        ...     metric='map',
-        ...     method='bootstrap_percentile',
-        ...     n_resamples=1000
-        ... )
-        >>> print(f"mAP@0.5:0.95: {map_val:.3f} [{lower:.3f}, {upper:.3f}]")
         """
-
-        # Validate and normalize task type
         task_str = task.value if isinstance(task, TaskType) else task.lower()
         if task_str not in ['classification', 'regression', 'detection']:
             raise ValueError(f"Unknown task type: {task}. Use 'classification', 'regression', or 'detection'")
 
-        # Handle detection tasks separately (different interface)
         if task_str == 'detection':
-            # Detection tasks require y_true (dataset path) and y_pred (Results objects)
-            if y_true is None or y_pred is None:
-                raise ValueError(
-                    "Detection tasks require:\n"
-                    "  - 'y_true': Path to validation dataset directory (e.g., 'val-dataset')\n"
-                    "  - 'y_pred': List of ultralytics Results objects from model.predict()"
-                )
+            return self._evaluate_detection(
+                y_true, y_pred, metric, method, confidence_level, compute_ci, plot, **kwargs)
 
-            if metric not in self.detection_metrics:
-                available = ', '.join(self.detection_metrics.keys())
-                raise ValueError(f"Unknown detection metric: {metric}. Available: {available}")
-
-            metric_func = self.detection_metrics[metric]
-
-            # Call the detection metric function
-            try:
-                result = metric_func(
-                    y_true=y_true,
-                    y_pred=y_pred,
-                    confidence_level=confidence_level,
-                    method=method,
-                    compute_ci=compute_ci,
-                    plot=plot,
-                    **kwargs
-                )
-                return result
-
-            except Exception as e:
-                raise RuntimeError(f"Error computing {metric}: {str(e)}")
-
-        # Handle classification and regression tasks
         if y_true is None or y_pred is None:
             raise ValueError("Classification and regression tasks require 'y_true' and 'y_pred' parameters")
 
-        # Get the appropriate metric function and validate
         if task_str == 'classification':
-            if metric not in self.classification_metrics:
-                available = ', '.join(self.classification_metrics.keys())
-                raise ValueError(f"Unknown classification metric: {metric}. Available: {available}")
-            metric_func = self.classification_metrics[metric]
+            return self._evaluate_classification(
+                y_true, y_pred, metric, method, confidence_level, compute_ci, plot, **kwargs)
 
-            # Validate method for classification
-            if method not in self.classification_methods:
-                available = ', '.join(self.classification_methods)
-                raise ValueError(f"Unknown classification method: {method}. Available: {available}")
-
-        else:  # regression
-            if metric not in self.regression_metrics:
-                available = ', '.join(self.regression_metrics.keys())
-                raise ValueError(f"Unknown regression metric: {metric}. Available: {available}")
-            metric_func = self.regression_metrics[metric]
-
-            # Validate method for regression
-            if method not in self.regression_methods:
-                available = ', '.join(self.regression_methods)
-                raise ValueError(f"Unknown regression method: {method}. Available: {available}")
-
-        # Set default kwargs for different methods
-        if method.startswith('bootstrap') and 'n_resamples' not in kwargs:
-            kwargs['n_resamples'] = 9999
-
-        # Call the metric function
-        try:
-            result = metric_func(
-                y_true=y_true,
-                y_pred=y_pred,
-                confidence_level=confidence_level,
-                method=method,
-                compute_ci=compute_ci,
-                plot=plot,
-                **kwargs
-            )
-            return result
-
-        except Exception as e:
-            raise RuntimeError(f"Error computing {metric} with method {method}: {str(e)}")
+        return self._evaluate_regression(
+            y_true, y_pred, metric, method, confidence_level, compute_ci, plot, **kwargs)
     
     def evaluate_multiple(self,
                          y_true: List[Union[int, float]], 

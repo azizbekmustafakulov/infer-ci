@@ -1,11 +1,16 @@
 """Visualization utilities for confidence interval evaluation."""
 
+import logging
 import os
 import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime
 from typing import Tuple, Union, List, Optional, Callable
 from .methods import bootstrap_ci
+
+logger = logging.getLogger(__name__)
+
+_RESULTS_DIR: str = "results"
 
 
 def create_bootstrap_histogram_plot(bootstrap_samples: np.ndarray,
@@ -40,10 +45,8 @@ def create_bootstrap_histogram_plot(bootstrap_samples: np.ndarray,
     str
         Path to the saved plot
     """
-    # Create Results directory if it doesn't exist
-    results_dir = "results"
-    if not os.path.exists(results_dir):
-        os.makedirs(results_dir)
+    if not os.path.exists(_RESULTS_DIR):
+        os.makedirs(_RESULTS_DIR)
 
     use_frequency = plot_type.lower() == "detection"
 
@@ -105,7 +108,7 @@ def create_bootstrap_histogram_plot(bootstrap_samples: np.ndarray,
     # Save the plot
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{metric_name}_{method}_{timestamp}.png"
-    filepath = os.path.join(results_dir, filename)
+    filepath = os.path.join(_RESULTS_DIR, filename)
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
     plt.close()
 
@@ -178,7 +181,7 @@ def bootstrap_with_plot(y_true: List[Union[int, float]],
         plot_path = create_bootstrap_histogram_plot(
             bootstrap_samples, metric_value, ci, metric_name, method, confidence_level, plot_type
         )
-        print(f"Histogram plot saved to: {plot_path}")
+        logger.info(f"Histogram plot saved to: {plot_path}")
 
         return metric_value, ci, plot_path
     else:

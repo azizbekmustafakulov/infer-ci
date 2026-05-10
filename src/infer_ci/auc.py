@@ -1,36 +1,38 @@
 import numpy as np
-from typing import Callable, List, Tuple, Optional
-from .delong import delong_roc_variance
-import sklearn.metrics
+from typing import List, Tuple, Optional
+from sklearn.metrics import roc_auc_score as _sklearn_roc_auc_score
 from scipy.stats import norm
 
+from .delong import delong_roc_variance
 from .methods import bootstrap_ci, bootstrap_methods
 
 
-def roc_auc_score_bootstrap(y_true: List,
-                            y_pred: List,
-                            confidence_level: float = 0.95,
-                            method: str = 'bootstrap_bca',
-                            n_resamples: int = 9999,
-                            random_state: Callable = None,
-                            average: str = 'macro',
-                            multi_class: str = 'raise',
-                            labels: Optional[List] = None) -> Tuple[float, float]:
+def roc_auc_score_bootstrap(
+        y_true: List[int],
+        y_pred: List[float],
+        confidence_level: float = 0.95,
+        method: str = 'bootstrap_bca',
+        n_resamples: int = 9999,
+        random_state: Optional[int] = None,
+        average: str = 'macro',
+        multi_class: str = 'raise',
+        labels: Optional[List] = None) -> Tuple[float, Tuple[float, float]]:
     return bootstrap_ci(y_true=y_true,
                         y_pred=y_pred,
-                        metric=lambda y1, y2: sklearn.metrics.roc_auc_score(y1, y2, 
-                        average=average, multi_class=multi_class, labels=labels),
+                        metric=lambda y1, y2: _sklearn_roc_auc_score(
+                            y1, y2, average=average, multi_class=multi_class, labels=labels),
                         confidence_level=confidence_level,
                         n_resamples=n_resamples,
                         method=method,
                         random_state=random_state)
 
 
-def roc_auc_score(y_true: List,
-                  y_pred: List,
-                  confidence_level: float = 0.95,
-                  method: str = 'delong',
-                  *args, **kwargs) -> Tuple[float, float]:
+def roc_auc_score(
+        y_true: List[int],
+        y_pred: List[float],
+        confidence_level: float = 0.95,
+        method: str = 'delong',
+        *args, **kwargs) -> Tuple[float, Tuple[float, float]]:
     valid_methods = ['delong'] + bootstrap_methods
     if method not in valid_methods:
         raise ValueError(f"Method {method} not in {valid_methods}")

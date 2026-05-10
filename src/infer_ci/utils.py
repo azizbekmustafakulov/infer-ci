@@ -1,10 +1,11 @@
 import numpy as np
 from sklearn.metrics import confusion_matrix
-from typing import List, Callable
+from typing import List, Tuple
 
 
-def get_positive_negative_counts(y_true: List,
-                                 y_pred: List):
+def get_positive_negative_counts(
+        y_true: List,
+        y_pred: List) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """ Return the False positives, false negatives, true positives, true negatives.
         Taken from
         https://stackoverflow.com/questions/31324218/scikit-learn-how-to-obtain-true-positive-true-negative-false-positive-and-fal

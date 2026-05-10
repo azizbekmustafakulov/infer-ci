@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from .takahashi_methods import precision_score, recall_score, f1_score
 
-def round_tuple(t, decimals=3):
+def round_tuple(t: tuple, decimals: int = 3) -> tuple:
     return tuple(round(num, decimals) for num in t)
 
 def classification_report_with_ci(y_true: List[int], y_pred: List[int], 
@@ -48,9 +48,6 @@ def classification_report_with_ci(y_true: List[int], y_pred: List[int],
             raise ValueError(f'Missing labels for classes: {missing_labels}')
 
     data = []  # List to store row dictionaries
-
-    # Unique classes in the dataset
-    classes = np.unique(y_true)
 
     # Calculate precision, recall, f1 for each class treated as binary
     for class_ in classes:
